@@ -1,18 +1,18 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import CameraScreen from 'C:/Users/Hp/Desktop/camera-app/components/CameraScreen'; // Adjust the import path as necessary
+import CameraScreen from '../components/CameraScreen';
 
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
-    <NavigationContainer independent={true}>
-      <Stack.Navigator initialRouteName="Camera">
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="CameraScreen">
         <Stack.Screen 
-          name="Camera" 
+          name="CameraScreen" 
           component={CameraScreen} 
-          options={{ title: 'Camera' }} 
+          options={{ headerShown: false }} 
         />
       </Stack.Navigator>
     </NavigationContainer>
