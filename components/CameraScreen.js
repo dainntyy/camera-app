@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, TouchableOpacity, Image, StyleSheet, Alert, Text } from 'react-native';
-import { Camera, CameraType, FlashMode } from 'expo-camera/legacy';
+import { Camera, CameraType } from 'expo-camera/legacy';
+import { FlashMode } from 'expo-camera/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, FlipType } from 'expo-image-manipulator';
@@ -16,26 +17,53 @@ export default function CameraScreen() {
     const [flashMode, setFlashMode] = useState(FlashMode.off);
     const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
     const [photoUri, setPhotoUri] = useState(null);
+    const [lastPhotoUri, setLastPhotoUri] = useState(null);
     const [referencePhoto, setReferencePhoto] = useState(null);
     const [isFrontCamera, setIsFrontCamera] = useState(type === CameraType.front);
     const cameraRef = useRef(null);
 
     useEffect(() => {
-        (async () => {
-            const { status } = await MediaLibrary.requestPermissionsAsync();
-            requestMediaLibraryPermission(status === 'granted');
-        })();
-    }, [requestMediaLibraryPermission]);
+    const getPermissionsAndAssets = async () => {
+        // Запитуємо дозвіл на використання камери
+        if (!permission?.granted) {
+            const newPermission = await requestPermission();
+            if (!newPermission.granted) return; // Перевірка, чи дійсно отримано дозвіл
+        }
+
+        // Запитуємо дозвіл на використання галереї
+        if (!mediaLibraryPermission?.granted) {
+            const newMediaPermission = await requestMediaLibraryPermission();
+            if (!newMediaPermission.granted) return; // Перевірка дозволу
+        }
+
+        // Тепер, коли маємо всі дозволи, можна отримувати останнє зображення
+        const media = await MediaLibrary.getAssetsAsync({
+            sortBy: MediaLibrary.SortBy.creationTime,
+            mediaType: 'photo',
+            first: 1,
+        });
+
+        if (media.assets.length > 0) {
+            const lastAsset = media.assets[0];
+            
+            if (lastAsset.uri.startsWith('ph://')) {
+                const assetInfo = await MediaLibrary.getAssetInfoAsync(lastAsset.id);
+                setLastPhotoUri(assetInfo.localUri); // Використовуємо localUri
+            } else {
+                setLastPhotoUri(lastAsset.uri); // Якщо URI не ph://, використовуємо його напряму
+            }
+        }
+    };
+
+    getPermissionsAndAssets();
+}, [permission, mediaLibraryPermission]);
+
 
     useEffect(() => {
         setIsFrontCamera(type === CameraType.front);
     }, [type]);
 
-    if (!permission) {
-        return <View />;
-    }
-
-    if (!permission.granted) {
+    if (!permission?.granted) {
         return (
             <View style={styles.container}>
                 <Text style={{ textAlign: 'center' }}>We need your permission to show the camera</Text>
@@ -61,7 +89,6 @@ export default function CameraScreen() {
         if (cameraRef.current) {
             let photo = await cameraRef.current.takePictureAsync();
 
-            // Якщо фронтальна камера активна, віддзеркалити зображення
             if (type === CameraType.front) {
                 const manipulatedImage = await manipulateAsync(
                     photo.uri,
@@ -73,28 +100,51 @@ export default function CameraScreen() {
                 setPhotoUri(photo.uri);
                 await MediaLibrary.saveToLibraryAsync(photo.uri);
             }
+
+            setLastPhotoUri(photo.uri); // Оновлюємо останнє фото після зйомки
         }
     };
 
     const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 1,
-        });
+    let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+    });
+
+    if (!result.canceled && result.assets) {
+        const asset = result.assets[0];
         
-        if (!result.canceled && result.assets) {
-        setReferencePhoto(result.assets.uri);  // Використовуємо перший елемент з масиву assets
+        if (asset.uri.startsWith('ph://')) {
+            // Перетворюємо `ph://` URI у фізичний файл через MediaLibrary
+            const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.uri);
+            setReferencePhoto(assetInfo.localUri); // Використовуємо localUri для відображення
+        } else {
+            setReferencePhoto(asset.uri); // Звичайний URI
+        }
     }
-    };
+};
+
 
     const clearReferencePhoto = () => {
         setReferencePhoto(null);
     };
 
+    const openGallery = async () => {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 1,
+        });
+
+        if (!result.canceled && result.assets) {
+            Alert.alert('Selected Image', 'Image URI: ' + result.assets[0].uri);
+        }
+    };
+
     function toggleCameraType() {
-        setType(current => (current === CameraType.back ? CameraType.front : CameraType.back));
+        setType((current) => (current === CameraType.back ? CameraType.front : CameraType.back));
     }
 
     function toggleFlash() {
@@ -119,8 +169,7 @@ export default function CameraScreen() {
                         <Text style={styles.overlayText}>Select an image as reference</Text>
                     )}
                 </View>
-                <View style={styles.header}>
-                </View>
+                <View style={styles.header} />
                 <View style={styles.topControls}>
                     <TouchableOpacity onPress={toggleCameraType} style={styles.iconButton}>
                         <Image source={flipCameraIcon} style={styles.iconImage} />
@@ -140,28 +189,20 @@ export default function CameraScreen() {
                         <TouchableOpacity onPress={takePicture} style={styles.captureButton}>
                             <View style={styles.captureCircle} />
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => {}} style={styles.iconButton}>
-                            {photoUri ? (
-                                <Image source={{ uri: photoUri }} style={styles.galleryImage} />
+                        <TouchableOpacity onPress={openGallery} style={styles.iconButton}>
+                            {lastPhotoUri ? (
+                                <Image source={{ uri: lastPhotoUri }} style={styles.galleryImage} />
                             ) : (
                                 <Text style={styles.iconPlaceholder}>Gallery</Text>
                             )}
                         </TouchableOpacity>
                     </View>
-                    <View style={styles.footer}>
-                    </View>
+                    <View style={styles.footer} />
                 </View>
             </Camera>
-            {photoUri && (
-                <Image
-                    source={{ uri: photoUri }}
-                    style={[styles.previewImage]}
-                />
-            )}
         </View>
     );
 }
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -195,7 +236,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         position: 'absolute',
-        backgroundColor: 'rgba(34, 37, 90, 0.7)',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         height: 50,
     }, 
     topControls: {
@@ -218,7 +259,7 @@ const styles = StyleSheet.create({
     },
     footer: {
         ...StyleSheet.absoluteFillObject, // Зробити фон абсолютним в межах контейнера
-        backgroundColor: 'rgba(34, 37, 90, 0.7)', // Напівпрозорий фон
+        backgroundColor: 'rgba(0, 0, 0, 0.5)', // Напівпрозорий фон
         zIndex: -1,
     },
     bottomControls: {
@@ -264,8 +305,13 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
     },
-    clearText: {
-        fontSize: 14,
+    permissionButton: {
+        backgroundColor: 'blue',
+        padding: 10,
+        borderRadius: 5,
+    },
+    permissionButtonText: {
         color: 'white',
+        textAlign: 'center',
     },
 });
