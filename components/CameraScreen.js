@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, TouchableOpacity, Image, StyleSheet, Alert, Text } from 'react-native';
+import { View, TouchableOpacity, Image, StyleSheet, Alert, Text, ImageBackground, Dimensions  } from 'react-native';
 import { Camera, CameraType } from 'expo-camera/legacy';
 import { FlashMode } from 'expo-camera/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, FlipType } from 'expo-image-manipulator';
+import Slider from '@react-native-community/slider';
 import flipCameraIcon from './icons/flip_camera.png';
 import FlashOnIcon from './icons/flash_icon.png';
 import FlashOffIcon from './icons/flash_off.png';
@@ -20,44 +21,42 @@ export default function CameraScreen() {
     const [lastPhotoUri, setLastPhotoUri] = useState(null);
     const [referencePhoto, setReferencePhoto] = useState(null);
     const [isFrontCamera, setIsFrontCamera] = useState(type === CameraType.front);
+    const [opacity, setOpacity] = useState(0.3); // Додаємо стан для прозорості
     const cameraRef = useRef(null);
+    const { width, height } = Dimensions.get('window');
 
     useEffect(() => {
-    const getPermissionsAndAssets = async () => {
-        // Запитуємо дозвіл на використання камери
-        if (!permission?.granted) {
-            const newPermission = await requestPermission();
-            if (!newPermission.granted) return; // Перевірка, чи дійсно отримано дозвіл
-        }
-
-        // Запитуємо дозвіл на використання галереї
-        if (!mediaLibraryPermission?.granted) {
-            const newMediaPermission = await requestMediaLibraryPermission();
-            if (!newMediaPermission.granted) return; // Перевірка дозволу
-        }
-
-        // Тепер, коли маємо всі дозволи, можна отримувати останнє зображення
-        const media = await MediaLibrary.getAssetsAsync({
-            sortBy: MediaLibrary.SortBy.creationTime,
-            mediaType: 'photo',
-            first: 1,
-        });
-
-        if (media.assets.length > 0) {
-            const lastAsset = media.assets[0];
-            
-            if (lastAsset.uri.startsWith('ph://')) {
-                const assetInfo = await MediaLibrary.getAssetInfoAsync(lastAsset.id);
-                setLastPhotoUri(assetInfo.localUri); // Використовуємо localUri
-            } else {
-                setLastPhotoUri(lastAsset.uri); // Якщо URI не ph://, використовуємо його напряму
+        const getPermissionsAndAssets = async () => {
+            if (!permission?.granted) {
+                const newPermission = await requestPermission();
+                if (!newPermission.granted) return;
             }
-        }
-    };
 
-    getPermissionsAndAssets();
-}, [permission, mediaLibraryPermission]);
+            if (!mediaLibraryPermission?.granted) {
+                const newMediaPermission = await requestMediaLibraryPermission();
+                if (!newMediaPermission.granted) return;
+            }
 
+            const media = await MediaLibrary.getAssetsAsync({
+                sortBy: MediaLibrary.SortBy.creationTime,
+                mediaType: 'photo',
+                first: 1,
+            });
+
+            if (media.assets.length > 0) {
+                const lastAsset = media.assets[0];
+                
+                if (lastAsset.uri.startsWith('ph://')) {
+                    const assetInfo = await MediaLibrary.getAssetInfoAsync(lastAsset.id);
+                    setLastPhotoUri(assetInfo.localUri);
+                } else {
+                    setLastPhotoUri(lastAsset.uri);
+                }
+            }
+        };
+
+        getPermissionsAndAssets();
+    }, [permission, mediaLibraryPermission]);
 
     useEffect(() => {
         setIsFrontCamera(type === CameraType.front);
@@ -92,7 +91,7 @@ export default function CameraScreen() {
             if (type === CameraType.front) {
                 const manipulatedImage = await manipulateAsync(
                     photo.uri,
-                    [{ flip: FlipType.Horizontal }] // Дзеркальне відображення по горизонталі
+                    [{ flip: FlipType.Horizontal }]
                 );
                 setPhotoUri(manipulatedImage.uri);
                 await MediaLibrary.saveToLibraryAsync(manipulatedImage.uri);
@@ -101,30 +100,31 @@ export default function CameraScreen() {
                 await MediaLibrary.saveToLibraryAsync(photo.uri);
             }
 
-            setLastPhotoUri(photo.uri); // Оновлюємо останнє фото після зйомки
+            setLastPhotoUri(photo.uri);
         }
     };
 
     const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-    });
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 1,
+        });
 
-    if (!result.canceled && result.assets) {
-        const asset = result.assets[0];
-        
-        if (asset.uri.startsWith('ph://')) {
-            // Перетворюємо `ph://` URI у фізичний файл через MediaLibrary
-            const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.uri);
-            setReferencePhoto(assetInfo.localUri); // Використовуємо localUri для відображення
-        } else {
-            setReferencePhoto(asset.uri); // Звичайний URI
+        if (!result.canceled && result.assets) {
+            const asset = result.assets[0];
+            
+            if (asset.uri.startsWith('ph://')) {
+                const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.uri);
+                setReferencePhoto(assetInfo.localUri);
+            } else {
+                setReferencePhoto(asset.uri);
+            }
         }
-    }
-};
+    };
+
+    
 
 
     const clearReferencePhoto = () => {
@@ -138,9 +138,9 @@ export default function CameraScreen() {
             quality: 1,
         });
 
-        if (!result.canceled && result.assets) {
-            Alert.alert('Selected Image', 'Image URI: ' + result.assets[0].uri);
-        }
+        // if (!result.canceled && result.assets) {
+        //     Alert.alert('Selected Image', 'Image URI: ' + result.assets[0].uri);
+        // }
     };
 
     function toggleCameraType() {
@@ -156,19 +156,26 @@ export default function CameraScreen() {
     return (
         <View style={styles.container}>
             <Camera
-                style={styles.camera}
+                style={{ width, height }}
                 type={type}
                 ref={cameraRef}
                 flashMode={flashMode}
-                ratio="16:9"
+                //ratio="16:9"
             >
-                <View style={styles.overlayContainer}>
-                    {referencePhoto ? (
-                        <Image source={{ uri: referencePhoto }} style={styles.overlayImage} />
-                    ) : (
-                        <Text style={styles.overlayText}>Select an image as reference</Text>
-                    )}
-                </View>
+                
+<View style={styles.overlayContainer}>
+        {referencePhoto ? (
+            <Image
+                source={{ uri: referencePhoto }}
+                style={[
+                    { width, height, opacity: opacity },
+                ]}
+                resizeMode="contain"
+            />
+        ) : (
+            <Text style={styles.overlayText}>Select an image as reference</Text>
+        )}
+    </View>
                 <View style={styles.header} />
                 <View style={styles.topControls}>
                     <TouchableOpacity onPress={toggleCameraType} style={styles.iconButton}>
@@ -197,12 +204,26 @@ export default function CameraScreen() {
                             )}
                         </TouchableOpacity>
                     </View>
+                    {referencePhoto && (
+                        <View style={styles.sliderContainer}>
+                            <Text style={styles.sliderLabel}>Opacity</Text>
+                            <Slider
+                                style={styles.slider}
+                                minimumValue={0}
+                                maximumValue={1}
+                                value={opacity}
+                                onValueChange={setOpacity}
+                            />
+                        </View>
+                    )}
                     <View style={styles.footer} />
                 </View>
             </Camera>
         </View>
     );
 }
+
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -211,23 +232,24 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     overlayContainer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+},
+
     overlayImage: {
-        width: '100%',
-        height: '100%',
-        opacity: 0.3,
-    },
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+},
+
     overlayText: {
         fontSize: 18,
-        color: 'white',
-        backgroundColor: 'black',
+        color: 'transparent',
         padding: 10,
         borderRadius: 5,
     },
@@ -237,11 +259,11 @@ const styles = StyleSheet.create({
         right: 0,
         position: 'absolute',
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        height: 50,
+        height: 100,
     }, 
     topControls: {
         position: 'absolute',
-        top: 50,
+        top: 100,
         left: 10,
         right: 10,
         flexDirection: 'column',
@@ -252,7 +274,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: 120,
+        height: 220,
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1,
@@ -269,7 +291,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         width: '100%',
         position: 'absolute', // Позиціонування кнопок поверх фону
-        bottom: 20,
+        bottom: 120,
     },
     iconButton: {
         padding: 10,
@@ -314,4 +336,21 @@ const styles = StyleSheet.create({
         color: 'white',
         textAlign: 'center',
     },
+    sliderContainer: {
+        width: '100%',
+        padding: 10,
+        alignItems: 'center',
+        bottom: 100,
+    },
+    sliderLabel: {
+        color: 'white',
+        marginBottom: 5,
+    },
+    slider: {
+        width: '80%',
+    },
 });
+
+
+
+
